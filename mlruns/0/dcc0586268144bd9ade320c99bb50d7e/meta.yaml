@@ -1,0 +1,15 @@
+artifact_uri: file:///home/runner/work/Workflow-CI/Workflow-CI/mlruns/0/dcc0586268144bd9ade320c99bb50d7e/artifacts
+end_time: 1773203184198
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: dcc0586268144bd9ade320c99bb50d7e
+run_name: powerful-horse-184
+run_uuid: dcc0586268144bd9ade320c99bb50d7e
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1773203173302
+status: 3
+tags: []
+user_id: runner
