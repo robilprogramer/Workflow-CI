@@ -46,11 +46,11 @@ OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
 def parse_args():
     """Parse hyperparameter dari command line / MLProject."""
     parser = argparse.ArgumentParser(description="Gold Price Prediction - MLflow Project")
-    parser.add_argument("--n_estimators",      type=int,   default=200)
-    parser.add_argument("--max_depth",         type=int,   default=10)
-    parser.add_argument("--min_samples_split", type=int,   default=2)
-    parser.add_argument("--min_samples_leaf",  type=int,   default=1)
-    parser.add_argument("--random_state",      type=int,   default=42)
+    parser.add_argument("--n_estimators",      type=int, default=200)
+    parser.add_argument("--max_depth",         type=int, default=10)
+    parser.add_argument("--min_samples_split", type=int, default=2)
+    parser.add_argument("--min_samples_leaf",  type=int, default=1)
+    parser.add_argument("--random_state",      type=int, default=42)
     return parser.parse_args()
 
 
@@ -122,9 +122,17 @@ def train(args):
 
     X_train, X_test, y_train, y_test = load_dataset()
 
-    mlflow.set_experiment(EXPERIMENT_NAME)
+    # ── Cek apakah sudah ada active run dari MLflow Project
+    # Jika ya → pakai run yang ada, jangan buat baru
+    active_run = mlflow.active_run()
+    if active_run:
+        print(f"  Menggunakan active run dari MLflow Project: {active_run.info.run_id}")
+        run_context = mlflow.start_run(run_id=active_run.info.run_id, nested=True)
+    else:
+        mlflow.set_experiment(EXPERIMENT_NAME)
+        run_context = mlflow.start_run(run_name="RandomForest-CI")
 
-    with mlflow.start_run(run_name="RandomForest-CI"):
+    with run_context:
 
         print("\n🚀 Training model...")
         model = RandomForestRegressor(
