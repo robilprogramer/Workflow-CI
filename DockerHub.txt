@@ -1,0 +1,12 @@
+Tautan Docker Image di Docker Hub:
+https://hub.docker.com/r/robilputra/gold-price-prediction
+
+Tags:
+- latest
+- run-7
+
+Cara pull image:
+docker pull robilputra/gold-price-prediction:latest
+
+Cara run container:
+docker run -p 5001:8080 robilputra/gold-price-prediction:latest
