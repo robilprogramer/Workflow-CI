@@ -43,14 +43,14 @@ jobs:
       - name: Verify Dataset
         run: |
           echo "Checking dataset..."
-          ls -lh MLProject/gold_preprocessing/
+          ls -lh gold_preprocessing/
           echo "✅ Dataset ready!"
 
       # ─── 5. Run MLflow Project (Training) ───────────────────────────────
       - name: Run MLflow Project
         run: |
           echo "🚀 Running MLflow Project..."
-          mlflow run MLProject/ \
+          mlflow run . \
             --env-manager=local \
             -P n_estimators=${{ github.event.inputs.n_estimators || '200' }} \
             -P max_depth=${{ github.event.inputs.max_depth || '10' }}
@@ -67,10 +67,10 @@ jobs:
             exit 1
           fi
 
-          echo "Checking MLProject/outputs..."
-          if [ -d "MLProject/outputs" ]; then
+          echo "Checking outputs..."
+          if [ -d "outputs" ]; then
             echo "✅ Artifacts found:"
-            ls -lh MLProject/outputs/
+            ls -lh outputs/
           fi
 
       # ─── 7. Upload Artifacts to GitHub ──────────────────────────────────
@@ -80,7 +80,7 @@ jobs:
           name: model-artifacts-${{ github.run_number }}
           path: |
             mlruns/
-            MLProject/outputs/
+            outputs/
           retention-days: 30
 
       # ─── 8. Commit mlruns & Artifacts to Repository ─────────────────────
@@ -88,7 +88,7 @@ jobs:
         run: |
           git config user.name  "GitHub Actions Bot"
           git config user.email "actions@github.com"
-          git add mlruns/ MLProject/outputs/ || true
+          git add mlruns/ outputs/ || true
           git diff --cached --quiet || \
             git commit -m "ci: save training artifacts [run #${{ github.run_number }}]"
           git push
@@ -110,8 +110,12 @@ jobs:
       - name: Build Docker Image with MLflow
         run: |
           echo "🐳 Building Docker image via mlflow build-docker..."
+          EXP_ID=$(ls mlruns/ | grep -v '0' | grep -v 'models' | head -1)
+          RUN_ID=$(ls mlruns/$EXP_ID/ | head -1)
+          MODEL_URI="mlruns/$EXP_ID/$RUN_ID/artifacts/model"
+          echo "Model URI: $MODEL_URI"
           mlflow models build-docker \
-            --model-uri "mlruns/$(ls mlruns/ | grep -v 0 | head -1)/$(ls mlruns/$(ls mlruns/ | grep -v 0 | head -1)/ | head -1)/artifacts/model" \
+            --model-uri "$MODEL_URI" \
             --name "${{ secrets.DOCKERHUB_USERNAME }}/gold-price-prediction" \
             --enable-mlserver
 
@@ -132,7 +136,7 @@ jobs:
       # ─── 13. Update DockerHub.txt ────────────────────────────────────────
       - name: Update DockerHub.txt
         run: |
-          cat > MLProject/DockerHub.txt << EOF
+          cat > DockerHub.txt << EOF
           Tautan Docker Image di Docker Hub:
           https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/gold-price-prediction
 
@@ -149,7 +153,7 @@ jobs:
 
           git config user.name  "GitHub Actions Bot"
           git config user.email "actions@github.com"
-          git add MLProject/DockerHub.txt
+          git add DockerHub.txt
           git diff --cached --quiet || \
             git commit -m "ci: update DockerHub link [run #${{ github.run_number }}]"
           git push
