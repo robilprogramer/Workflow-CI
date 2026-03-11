@@ -111,24 +111,17 @@ jobs:
         run: |
           echo "🐳 Building Docker image via mlflow build-docker..."
 
-          # Cari experiment ID (angka selain 0)
-          EXP_ID=$(ls mlruns/ | grep -E '^[0-9]+$' | grep -v '^0$' | sort -n | head -1)
-          echo "EXP_ID: $EXP_ID"
-
-          # Cari run ID (32 karakter hex)
-          RUN_ID=$(ls mlruns/$EXP_ID/ | grep -E '^[a-f0-9]{32}$' | head -1)
-          echo "RUN_ID: $RUN_ID"
-
-          MODEL_PATH="mlruns/$EXP_ID/$RUN_ID/artifacts/model"
+          # Cari path model langsung — cari folder 'model' di dalam artifacts
+          MODEL_PATH=$(find mlruns -type d -name "model" | grep "artifacts/model" | head -1)
           echo "Model path: $MODEL_PATH"
 
-          if [ ! -d "$MODEL_PATH" ]; then
+          if [ -z "$MODEL_PATH" ] || [ ! -d "$MODEL_PATH" ]; then
             echo "❌ Model not found! Listing mlruns:"
-            find mlruns -type d | head -20
+            find mlruns -type d | head -30
             exit 1
           fi
 
-          echo "✅ Model found!"
+          echo "✅ Model found at: $MODEL_PATH"
           mlflow models build-docker \
             --model-uri "$MODEL_PATH" \
             --name "${{ secrets.DOCKERHUB_USERNAME }}/gold-price-prediction" \
