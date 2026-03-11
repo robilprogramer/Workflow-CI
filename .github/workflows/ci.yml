@@ -1,0 +1,172 @@
+name: CI - Gold Price ML Training
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      n_estimators:
+        description: 'Jumlah estimators (n_estimators)'
+        required: false
+        default: '200'
+      max_depth:
+        description: 'Kedalaman maksimal pohon (max_depth)'
+        required: false
+        default: '10'
+
+jobs:
+  train-and-deploy:
+    runs-on: ubuntu-latest
+    name: Train Model & Build Docker
+    permissions:
+      contents: write
+
+    steps:
+      # ─── 1. Checkout ────────────────────────────────────────────────────
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # ─── 2. Setup Python ────────────────────────────────────────────────
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.7'
+
+      # ─── 3. Install Dependencies ────────────────────────────────────────
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install mlflow==2.19.0 scikit-learn==1.5.2 pandas==2.2.2 numpy==1.26.4 matplotlib==3.9.2
+
+      # ─── 4. Verify Dataset ──────────────────────────────────────────────
+      - name: Verify Dataset
+        run: |
+          echo "Checking dataset..."
+          ls -lh MLProject/gold_preprocessing/
+          echo "✅ Dataset ready!"
+
+      # ─── 5. Run MLflow Project (Training) ───────────────────────────────
+      - name: Run MLflow Project
+        run: |
+          echo "🚀 Running MLflow Project..."
+          mlflow run MLProject/ \
+            --env-manager=local \
+            -P n_estimators=${{ github.event.inputs.n_estimators || '200' }} \
+            -P max_depth=${{ github.event.inputs.max_depth || '10' }}
+
+      # ─── 6. Verify Training Output ──────────────────────────────────────
+      - name: Verify Training Output
+        run: |
+          echo "Checking mlruns output..."
+          if [ -d "mlruns" ]; then
+            echo "✅ mlruns directory found!"
+            find mlruns -name "*.json" | head -10
+          else
+            echo "❌ mlruns not found!"
+            exit 1
+          fi
+
+          echo "Checking MLProject/outputs..."
+          if [ -d "MLProject/outputs" ]; then
+            echo "✅ Artifacts found:"
+            ls -lh MLProject/outputs/
+          fi
+
+      # ─── 7. Upload Artifacts to GitHub ──────────────────────────────────
+      - name: Upload Artifacts to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-artifacts-${{ github.run_number }}
+          path: |
+            mlruns/
+            MLProject/outputs/
+          retention-days: 30
+
+      # ─── 8. Commit mlruns & Artifacts to Repository ─────────────────────
+      - name: Commit Artifacts to Repository
+        run: |
+          git config user.name  "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add mlruns/ MLProject/outputs/ || true
+          git diff --cached --quiet || \
+            git commit -m "ci: save training artifacts [run #${{ github.run_number }}]"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ─── 9. Setup Docker Buildx ─────────────────────────────────────────
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ─── 10. Login ke Docker Hub ────────────────────────────────────────
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ─── 11. Build Docker Image via mlflow build-docker ─────────────────
+      - name: Build Docker Image with MLflow
+        run: |
+          echo "🐳 Building Docker image via mlflow build-docker..."
+          mlflow models build-docker \
+            --model-uri "mlruns/$(ls mlruns/ | grep -v 0 | head -1)/$(ls mlruns/$(ls mlruns/ | grep -v 0 | head -1)/ | head -1)/artifacts/model" \
+            --name "${{ secrets.DOCKERHUB_USERNAME }}/gold-price-prediction" \
+            --enable-mlserver
+
+      # ─── 12. Push Docker Image ke Docker Hub ────────────────────────────
+      - name: Push Docker Image to Docker Hub
+        run: |
+          docker tag \
+            ${{ secrets.DOCKERHUB_USERNAME }}/gold-price-prediction:latest \
+            ${{ secrets.DOCKERHUB_USERNAME }}/gold-price-prediction:run-${{ github.run_number }}
+
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/gold-price-prediction:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/gold-price-prediction:run-${{ github.run_number }}
+
+          echo "✅ Docker image pushed:"
+          echo "   ${{ secrets.DOCKERHUB_USERNAME }}/gold-price-prediction:latest"
+          echo "   ${{ secrets.DOCKERHUB_USERNAME }}/gold-price-prediction:run-${{ github.run_number }}"
+
+      # ─── 13. Update DockerHub.txt ────────────────────────────────────────
+      - name: Update DockerHub.txt
+        run: |
+          cat > MLProject/DockerHub.txt << EOF
+          Tautan Docker Image di Docker Hub:
+          https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/gold-price-prediction
+
+          Tags:
+          - latest
+          - run-${{ github.run_number }}
+
+          Cara pull image:
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/gold-price-prediction:latest
+
+          Cara run container:
+          docker run -p 5001:8080 ${{ secrets.DOCKERHUB_USERNAME }}/gold-price-prediction:latest
+          EOF
+
+          git config user.name  "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add MLProject/DockerHub.txt
+          git diff --cached --quiet || \
+            git commit -m "ci: update DockerHub link [run #${{ github.run_number }}]"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ─── 14. Summary ────────────────────────────────────────────────────
+      - name: Print Summary
+        run: |
+          echo "============================================"
+          echo "✅ CI PIPELINE COMPLETED SUCCESSFULLY"
+          echo "============================================"
+          echo "Run Number   : ${{ github.run_number }}"
+          echo "Triggered by : ${{ github.event_name }}"
+          echo "Branch       : ${{ github.ref_name }}"
+          echo ""
+          echo "n_estimators : ${{ github.event.inputs.n_estimators || '200' }}"
+          echo "max_depth    : ${{ github.event.inputs.max_depth || '10' }}"
+          echo ""
+          echo "Docker Image : ${{ secrets.DOCKERHUB_USERNAME }}/gold-price-prediction:latest"
