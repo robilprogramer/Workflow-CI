@@ -1,0 +1,17 @@
+{
+    "model": "RandomForestRegressor",
+    "metrics": {
+        "mae": 73.44958675946931,
+        "mse": 7609.169559106708,
+        "rmse": 87.23055404562503,
+        "r2": -0.3717566440059994,
+        "mape": 0.05888198564047167
+    },
+    "params": {
+        "n_estimators": 200,
+        "max_depth": 10,
+        "min_samples_split": 2,
+        "min_samples_leaf": 1,
+        "random_state": 42
+    }
+}
